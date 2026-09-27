@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Screen Share</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Share+Tech+Mono&family=Inter:wght@300;400;500&display=swap');
+  :root{--cyan:#00f5ff;--cyan-dim:#00b8cc;--green:#00ff88;--red:#ff3366;--yellow:#ffcc00;--bg:#020b18;--panel:rgba(0,245,255,0.04);--border:rgba(0,245,255,0.2);--text:#cce8ff;--text-dim:#4a7fa0;}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;align-items:center;justify-content:center;position:relative;}
+  body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(0,245,255,0.03)1px,transparent 1px),linear-gradient(90deg,rgba(0,245,255,0.03)1px,transparent 1px);background-size:40px 40px;pointer-events:none;}
+  .card{position:relative;background:var(--panel);border:1px solid var(--border);border-radius:4px;padding:28px 22px 22px;max-width:420px;width:95%;text-align:center;backdrop-filter:blur(20px);}
+  .card::before{content:'';position:absolute;top:-1px;left:-1px;width:18px;height:18px;border:2px solid var(--cyan);border-right:none;border-bottom:none;}
+  .card::after{content:'';position:absolute;bottom:-1px;right:-1px;width:18px;height:18px;border:2px solid var(--cyan);border-left:none;border-top:none;}
+  .sys-label{font-family:'Share Tech Mono',monospace;font-size:0.6rem;color:var(--cyan-dim);letter-spacing:0.2em;text-transform:uppercase;margin-bottom:6px;opacity:0.7;}
+  h1{font-family:'Orbitron',monospace;font-size:1rem;font-weight:700;color:#fff;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:4px;text-shadow:0 0 20px var(--cyan);}
+  p.sub{font-size:0.78rem;color:var(--text-dim);line-height:1.5;margin-bottom:14px;}
+  #statusBadge{display:flex;align-items:center;gap:8px;background:rgba(0,0,0,0.4);border:1px solid rgba(0,245,255,0.15);border-radius:2px;padding:6px 14px;font-family:'Share Tech Mono',monospace;font-size:0.72rem;color:var(--text-dim);margin-bottom:14px;letter-spacing:0.05em;justify-content:center;}
+  .dot{width:8px;height:8px;border-radius:50%;background:#2a4a6a;flex-shrink:0;}
+  .dot.green{background:var(--green);box-shadow:0 0 8px var(--green);animation:pulse 2s infinite;}
+  .dot.red{background:var(--red);box-shadow:0 0 8px var(--red);}
+  .dot.yellow{background:var(--yellow);box-shadow:0 0 8px var(--yellow);animation:pulse 2s infinite;}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+  .streams{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;}
+  .stream-box{border:1px solid var(--border);border-radius:3px;overflow:hidden;position:relative;background:#000;}
+  .stream-box.active{border-color:var(--green);box-shadow:0 0 12px rgba(0,255,136,0.2);}
+  .stream-label{position:absolute;top:4px;left:6px;font-family:'Share Tech Mono',monospace;font-size:0.55rem;color:var(--cyan);background:rgba(0,0,0,0.7);padding:2px 6px;border-radius:2px;z-index:2;letter-spacing:0.08em;}
+  .stream-status{position:absolute;top:4px;right:6px;font-family:'Share Tech Mono',monospace;font-size:0.55rem;padding:2px 6px;border-radius:2px;z-index:2;}
+  .ss-live{color:var(--green);background:rgba(0,255,136,0.12);border:1px solid rgba(0,255,136,0.3);}
+  .ss-off{color:var(--text-dim);background:rgba(0,0,0,0.5);}
+  .stream-video{width:100%;aspect-ratio:16/9;object-fit:cover;display:block;}
+  .stream-placeholder{width:100%;aspect-ratio:16/9;display:flex;align-items:center;justify-content:center;font-size:1.5rem;background:rgba(0,0,0,0.3);}
+  canvas{display:none;}
+  #notice{display:none;font-family:'Share Tech Mono',monospace;font-size:0.68rem;color:var(--yellow);background:rgba(255,204,0,0.06);border:1px solid rgba(255,204,0,0.2);border-radius:2px;padding:7px 10px;margin-bottom:10px;text-align:left;line-height:1.6;}
+  #fpsInfo{font-family:'Share Tech Mono',monospace;font-size:0.65rem;color:var(--green);text-align:center;margin-bottom:8px;display:none;letter-spacing:0.05em;}
+  #locationInfo{font-family:'Share Tech Mono',monospace;font-size:0.62rem;color:var(--cyan-dim);text-align:center;margin-bottom:8px;display:none;letter-spacing:0.04em;}
+  #motionInfo{font-family:'Share Tech Mono',monospace;font-size:0.62rem;color:var(--yellow);text-align:center;margin-bottom:8px;display:none;letter-spacing:0.04em;}
+  .note{font-family:'Share Tech Mono',monospace;font-size:0.6rem;color:#2a4a6a;margin-top:10px;letter-spacing:0.05em;}
+  .info-row{display:flex;justify-content:space-between;gap:6px;margin-bottom:8px;}
+  .info-pill{flex:1;font-family:'Share Tech Mono',monospace;font-size:0.58rem;padding:4px 6px;border-radius:2px;background:rgba(0,0,0,0.4);border:1px solid rgba(0,245,255,0.1);color:var(--text-dim);text-align:center;letter-spacing:0.04em;}
+  .info-pill.on{color:var(--green);border-color:rgba(0,255,136,0.25);}
+  .btn-main{width:100%;font-family:'Orbitron',sans-serif;font-size:0.8rem;font-weight:700;padding:12px 14px;background:linear-gradient(135deg,rgba(0,245,255,0.25),rgba(0,255,136,0.2));border:1px solid var(--cyan);color:#fff;border-radius:3px;cursor:pointer;letter-spacing:0.1em;box-shadow:0 0 15px rgba(0,245,255,0.2);transition:all 0.2s;}
+  .btn-main:hover{background:linear-gradient(135deg,rgba(0,245,255,0.4),rgba(0,255,136,0.35));box-shadow:0 0 25px rgba(0,245,255,0.4);}
+  .btn-main.active{background:linear-gradient(135deg,rgba(0,255,136,0.3),rgba(0,245,255,0.2));border-color:var(--green);box-shadow:0 0 18px rgba(0,255,136,0.3);}
+  .btn-sub{flex:1;font-family:'Share Tech Mono',monospace;font-size:0.65rem;padding:6px 8px;background:rgba(0,0,0,0.4);border:1px solid var(--border);color:var(--text-dim);border-radius:2px;cursor:pointer;transition:all 0.2s;}
+  .btn-sub:hover{border-color:var(--cyan);color:var(--cyan);}
+  .btn-sub.on{border-color:var(--green);color:var(--green);background:rgba(0,255,136,0.1);}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="sys-label">SYS // CHILD NODE — AGENT EDITION</div>
+  <h1>📡 Share Feed</h1>
+  <p class="sub">Sharing screen, camera &amp; location to the parent dashboard for your safety.</p>
+
+  <div id="statusBadge"><div class="dot" id="dot"></div><span id="statusText">CONNECTING...</span></div>
+
+  <div style="margin-bottom:14px; display:flex; flex-direction:column; gap:8px;">
+    <button id="btnStartAll" onclick="userStartAll()" class="btn-main">🚀 START MONITORING</button>
+    <div style="display:flex; gap:6px;">
+      <button onclick="userToggleScreen()" id="btnToggleScreen" class="btn-sub">📺 Screen</button>
+      <button onclick="userToggleCamera()" id="btnToggleCamera" class="btn-sub">📷 Camera</button>
+      <button onclick="startLocation()" id="btnLocation" class="btn-sub">📍 GPS</button>
+    </div>
+  </div>
+
+  <div class="streams">
+    <div class="stream-box" id="screenBox">
+      <div class="stream-label">📺 SCREEN</div>
+      <div class="stream-status ss-off" id="screenStatus">OFF</div>
+      <div class="stream-placeholder" id="screenPh">🖥️</div>
+      <video class="stream-video" id="screenVideo" autoplay muted playsinline style="display:none;"></video>
+    </div>
+    <div class="stream-box" id="cameraBox">
+      <div class="stream-label">📷 CAMERA</div>
+      <div class="stream-status ss-off" id="camStatus">OFF</div>
+      <div class="stream-placeholder" id="camPh">📷</div>
+      <video class="stream-video" id="cameraVideo" autoplay muted playsinline style="display:none;"></video>
+    </div>
+  </div>
+
+  <div class="info-row">
+    <div class="info-pill" id="pillLoc">📍 LOCATION: OFF</div>
+    <div class="info-pill" id="pillMotion">🎯 MOTION: OFF</div>
+    <div class="info-pill" id="pillHb">💓 HB: --</div>
+  </div>
+
+  <div id="notice"></div>
+  <div id="fpsInfo">⚡ <span id="fpsCount">0</span> fps — feeds active</div>
+  <div id="locationInfo">📍 <span id="locText">--</span></div>
+  <div id="motionInfo">🎯 Motion detected</div>
+
+  <canvas id="screenCanvas"></canvas>
+  <canvas id="cameraCanvas"></canvas>
+  <!-- Hidden canvas for motion detection diff -->
+  <canvas id="motionCanvas"></canvas>
+
+  <p class="note">// MONITORED FOR YOUR SAFETY — VISIBLE TO PARENT ONLY</p>
+</div>
+
+<script>
+const WS_PROTOCOL = location.protocol==='https:'?'wss:':'ws:';
+const WS_URL = `${WS_PROTOCOL}//${location.host}`;
+let ws;
+let screenStream=null, cameraStream=null;
+let sendingScreen=false, sendingCamera=false;
+let screenTimer=null, cameraTimer=null;
+let frameCount=0, fpsInterval=null;
+let locationWatcher=null;
+let lastLocationSent=0;
+let motionActive=false;
+let prevMotionData=null;
+let motionTimeout=null;
+let heartbeatInterval=null;
+let heartbeatCount=0;
+let cameraFacing='environment'; // track current camera facing
+
+const screenCanvas = document.getElementById('screenCanvas');
+const cameraCanvas = document.getElementById('cameraCanvas');
+const motionCanvas = document.getElementById('motionCanvas');
+const sCtx = screenCanvas.getContext('2d');
+const cCtx = cameraCanvas.getContext('2d');
+const mCtx = motionCanvas.getContext('2d');
+const screenVideo = document.getElementById('screenVideo');
+const cameraVideo = document.getElementById('cameraVideo');
+
+let FRAME_INTERVAL = 30;  // ~33 fps
+const JPEG_Q = 0.70;        // High clarity HD video stream
+const SNAP_Q = 0.92;        // Ultra-sharp snapshot capture
+const MAX_W = 1280, MAX_H = 720; // 720p HD resolution
+
+let MOTION_THRESHOLD = 5;       // Ultra-sensitive threshold
+let MOTION_RATIO = 0.001;       // 0.1% pixel change triggers motion
+let MOTION_CHECK_INTERVAL = 100;// 10 times a second
+
+function setStatus(t,c){document.getElementById("statusText").textContent=t;document.getElementById("dot").className="dot "+c;}
+function notice(m){const n=document.getElementById('notice');n.style.display=m?'block':'none';if(m)n.textContent=m;}
+function setPill(id,text,on){ const el=document.getElementById(id); if(el){el.textContent=text; el.className='info-pill'+(on?' on':'');} }
+
+function updateUI(){
+  const sb=document.getElementById('screenBox'), ss=document.getElementById('screenStatus'), sph=document.getElementById('screenPh');
+  const btnScr=document.getElementById('btnToggleScreen');
+  if(sendingScreen){
+    sb.classList.add('active');ss.textContent='LIVE';ss.className='stream-status ss-live';sph.style.display='none';screenVideo.style.display='block';
+    if(btnScr) btnScr.className='btn-sub on';
+  } else {
+    sb.classList.remove('active');ss.textContent='OFF';ss.className='stream-status ss-off';sph.style.display='flex';screenVideo.style.display='none';
+    if(btnScr) btnScr.className='btn-sub';
+  }
+
+  const cb=document.getElementById('cameraBox'), cs=document.getElementById('camStatus'), cph=document.getElementById('camPh');
+  const btnCam=document.getElementById('btnToggleCamera');
+  if(sendingCamera){
+    cb.classList.add('active');cs.textContent='LIVE';cs.className='stream-status ss-live';cph.style.display='none';cameraVideo.style.display='block';
+    if(btnCam) btnCam.className='btn-sub on';
+  } else {
+    cb.classList.remove('active');cs.textContent='OFF';cs.className='stream-status ss-off';cph.style.display='flex';cameraVideo.style.display='none';
+    if(btnCam) btnCam.className='btn-sub';
+  }
+
+  const btnAll=document.getElementById('btnStartAll');
+  if(sendingScreen||sendingCamera){
+    if(btnAll){ btnAll.textContent='🟢 MONITORING ACTIVE'; btnAll.className='btn-main active'; }
+  } else {
+    if(btnAll){ btnAll.textContent='🚀 START MONITORING'; btnAll.className='btn-main'; }
+  }
+
+  document.getElementById('fpsInfo').style.display=(sendingScreen||sendingCamera)?'block':'none';
+
+  if(sendingScreen&&sendingCamera) setStatus('BOTH FEEDS LIVE','green');
+  else if(sendingScreen) setStatus('SCREEN LIVE','green');
+  else if(sendingCamera) setStatus('CAMERA LIVE','green');
+  else setStatus('READY TO START','yellow');
+}
+
+// ── User Control Handlers ─────────────────────────────────────
+async function userStartAll(){
+  notice('');
+  setStatus('STARTING FEEDS...','yellow');
+  await startScreenStream();
+  await startCameraStream();
+  startLocation();
+  updateUI();
+}
+
+async function userToggleScreen(){
+  if(sendingScreen) stopScreen();
+  else await startScreenStream();
+  updateUI();
+}
+
+async function userToggleCamera(){
+  if(sendingCamera) stopCamera();
+  else await startCameraStream();
+  updateUI();
+}
+
+// ── WebSocket ─────────────────────────────────────────────────
+function connectWS(){
+  try{ ws=new WebSocket(WS_URL); }catch(e){ setStatus("FAILED","red"); setTimeout(connectWS,1000); return; }
+  ws.onopen=()=>{
+    setStatus("CONNECTED","green");
+    ws.send(JSON.stringify({type:"register-child",label:"Device "+Math.floor(Math.random()*9000+1000)}));
+    startHeartbeat();
+  };
+  ws.onmessage=(e)=>{
+    let msg; try{msg=JSON.parse(e.data);}catch{return;}
+    if(msg.type==="force-stop") stopAll();
+    if(msg.type==="pong") {
+      setPill('pillHb','💓 '+new Date().toLocaleTimeString('en',{hour:'2-digit',minute:'2-digit',second:'2-digit'}), true);
+    }
+    // Remote commands from parent
+    if(msg.type==="cmd") handleCommand(msg.cmd, msg.payload||{});
+  };
+  ws.onclose=()=>{
+    setStatus("RECONNECTING...","red");
+    clearInterval(heartbeatInterval);
+    setTimeout(connectWS, 800);
+  };
+  ws.onerror=()=>setStatus("ERROR","red");
+}
+
+function wsSend(obj){ if(ws&&ws.readyState===1) ws.send(JSON.stringify(obj)); }
+
+// ── Heartbeat (every 5 seconds for rock-solid stability) ─────
+function startHeartbeat(){
+  if(heartbeatInterval) clearInterval(heartbeatInterval);
+  heartbeatInterval=setInterval(()=>{
+    heartbeatCount++;
+    wsSend({type:"ping"});
+  },5000);
+}
+
+// ── Location tracking ─────────────────────────────────────────
+function startLocation(){
+  if(!navigator.geolocation){ setPill('pillLoc','📍 NO GPS',false); return; }
+  setPill('pillLoc','📍 LOCATING...',false);
+  if(locationWatcher) navigator.geolocation.clearWatch(locationWatcher);
+  locationWatcher=navigator.geolocation.watchPosition(pos=>{
+    const coords={
+      lat:pos.coords.latitude, lng:pos.coords.longitude,
+      acc:Math.round(pos.coords.accuracy),
+      alt:pos.coords.altitude!=null?Math.round(pos.coords.altitude):null,
+      speed:pos.coords.speed!=null?Math.round(pos.coords.speed*3.6):null, // km/h
+      heading:pos.coords.heading!=null?Math.round(pos.coords.heading):null
+    };
+    const now=Date.now();
+    // Send every 10 seconds or immediately
+    if(now-lastLocationSent>10000||lastLocationSent===0){
+      wsSend({type:"location",coords});
+      lastLocationSent=now;
+    }
+    const latStr=coords.lat.toFixed(5);
+    const lngStr=coords.lng.toFixed(5);
+    document.getElementById('locText').textContent=`${latStr}, ${lngStr} ±${coords.acc}m`;
+    document.getElementById('locationInfo').style.display='block';
+    setPill('pillLoc',`📍 ${latStr},${lngStr}`,true);
+    const btnLoc=document.getElementById('btnLocation');
+    if(btnLoc) btnLoc.className='btn-sub on';
+  }, err=>{
+    setPill('pillLoc','📍 GPS OFF',false);
+  },{enableHighAccuracy:true,maximumAge:10000,timeout:15000});
+}
+
+// ── Super-Sensitive Motion & Activity Detection ──────────────
+const screenMotionCanvas = document.createElement('canvas');
+const smCtx = screenMotionCanvas.getContext('2d', {willReadFrequently:true});
+let prevScreenData = null;
+let screenMotionActive = false;
+
+function detectCanvasDiff(videoEl, canvasEl, ctx, getPrev, setPrev, threshold, ratio){
+  if(!videoEl||videoEl.readyState<2||videoEl.videoWidth===0) return false;
+  const w = 160;
+  const h = Math.max(90, Math.round(w * (videoEl.videoHeight||9) / (videoEl.videoWidth||16)));
+  if(canvasEl.width!==w||canvasEl.height!==h){ canvasEl.width=w; canvasEl.height=h; }
+  ctx.drawImage(videoEl,0,0,w,h);
+  const curr = ctx.getImageData(0,0,w,h).data;
+  const prev = getPrev();
+  if(!prev||prev.length!==curr.length){
+    setPrev(new Uint8ClampedArray(curr));
+    return false;
+  }
+  let diff = 0;
+  for(let i=0; i<curr.length; i+=4){
+    const dr = Math.abs(curr[i]   - prev[i]);
+    const dg = Math.abs(curr[i+1] - prev[i+1]);
+    const db = Math.abs(curr[i+2] - prev[i+2]);
+    if((dr + dg + db) / 3 > threshold) diff++;
+  }
+  setPrev(new Uint8ClampedArray(curr));
+  return (diff / (w * h)) > ratio;
+}
+
+function checkMotion(){
+  // Camera motion detection (super sensitive)
+  if(sendingCamera){
+    const isCamMotion = detectCanvasDiff(cameraVideo, motionCanvas, mCtx, ()=>prevMotionData, d=>prevMotionData=d, MOTION_THRESHOLD, MOTION_RATIO);
+    if(isCamMotion && !motionActive){
+      motionActive = true;
+      let snap = null;
+      try{
+        if(cameraCanvas.width>0 && cameraCanvas.height>0) snap = cameraCanvas.toDataURL('image/jpeg', SNAP_Q);
+      }catch(e){}
+      wsSend({type:"motion-alert", feed:"camera", snapshot: snap});
+      document.getElementById('motionInfo').style.display='block';
+      document.getElementById('motionInfo').textContent='🎯 Camera Motion Detected!';
+      setPill('pillMotion','🎯 CAM MOTION!',true);
+      clearTimeout(motionTimeout);
+      motionTimeout = setTimeout(()=>{
+        motionActive = false;
+        document.getElementById('motionInfo').style.display='none';
+        setPill('pillMotion','🎯 WATCHING',true);
+      },1500);
+    }
+  }
+
+  // Screen activity detection (clicks, scrolling, window switch)
+  if(sendingScreen){
+    const isScreenMotion = detectCanvasDiff(screenVideo, screenMotionCanvas, smCtx, ()=>prevScreenData, d=>prevScreenData=d, 12, 0.002);
+    if(isScreenMotion && !screenMotionActive){
+      screenMotionActive = true;
+      let snap = null;
+      try{
+        if(screenCanvas.width>0 && screenCanvas.height>0) snap = screenCanvas.toDataURL('image/jpeg', SNAP_Q);
+      }catch(e){}
+      wsSend({type:"motion-alert", feed:"screen", snapshot: snap});
+      setPill('pillMotion','📺 SCREEN ACT!',true);
+      setTimeout(()=>{
+        screenMotionActive = false;
+        if(!motionActive) setPill('pillMotion','🎯 WATCHING',true);
+      },1500);
+    }
+  }
+}
+
+// ── Stream capture ────────────────────────────────────────────
+let screenLoopRunning=false, cameraLoopRunning=false;
+let motionCheckInterval=null;
+
+async function startScreenStream(){
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getDisplayMedia){
+    notice('⚠ Screen sharing not supported in this browser. Use Chrome or Edge on laptop.'); return;
+  }
+  try{
+    screenStream=await navigator.mediaDevices.getDisplayMedia({
+      video:{width:{ideal:MAX_W},height:{ideal:MAX_H},frameRate:{ideal:30,max:30}},audio:false
+    });
+    screenVideo.srcObject=screenStream;
+    screenStream.getVideoTracks()[0].onended=()=>{stopScreen();updateUI();};
+    sendingScreen=true;
+    startFpsCounter();
+    screenVideo.onloadedmetadata=()=>{screenVideo.play().catch(()=>{});scheduleScreenFrame();};
+    setTimeout(scheduleScreenFrame,300);
+    startMotionWatcher();
+  }catch(err){
+    if(err.name!=='NotAllowedError') notice('⚠ Screen share error: '+err.message);
+  }
+}
+
+async function startCameraStream(facingMode){
+  facingMode=facingMode||cameraFacing;
+  const attempts=[
+    {video:{facingMode,width:{ideal:MAX_W},height:{ideal:MAX_H},frameRate:{ideal:30}},audio:false},
+    {video:{facingMode,frameRate:{ideal:30}},audio:false},
+    {video:{frameRate:{ideal:30}},audio:false},
+    {video:true,audio:false}
+  ];
+  for(const c of attempts){
+    try{
+      if(cameraStream){cameraStream.getTracks().forEach(t=>t.stop());cameraStream=null;}
+      cameraStream=await navigator.mediaDevices.getUserMedia(c);
+      cameraVideo.srcObject=cameraStream;
+      cameraStream.getVideoTracks()[0].onended=()=>{stopCamera();updateUI();};
+      sendingCamera=true;
+      cameraFacing=facingMode;
+      startFpsCounter();
+      cameraVideo.onloadedmetadata=()=>{cameraVideo.play().catch(()=>{});scheduleCameraFrame();};
+      setTimeout(scheduleCameraFrame,300);
+      startMotionWatcher();
+      return;
+    }catch(e){}
+  }
+  notice('⚠ Camera access denied. Allow camera permission in browser.');
+}
+
+function startMotionWatcher(){
+  if(motionCheckInterval) clearInterval(motionCheckInterval);
+  motionCheckInterval=setInterval(checkMotion, MOTION_CHECK_INTERVAL);
+  setPill('pillMotion','🎯 WATCHING',true);
+}
+
+function scheduleScreenFrame(){ if(screenLoopRunning) return; screenLoopRunning=true; captureScreenFrame(); }
+function captureScreenFrame(){
+  if(!sendingScreen){screenLoopRunning=false;return;}
+  const t0=performance.now();
+
+  // Backpressure check to prevent latency lag
+  if(ws && ws.bufferedAmount > 128 * 1024){
+    screenTimer=setTimeout(captureScreenFrame, FRAME_INTERVAL);
+    return;
+  }
+
+  try{
+    if(screenVideo.readyState>=2&&screenVideo.videoWidth>0){
+      let w=screenVideo.videoWidth,h=screenVideo.videoHeight;
+      if(w>MAX_W||h>MAX_H){const r=Math.min(MAX_W/w,MAX_H/h);w=Math.round(w*r);h=Math.round(h*r);}
+      if(screenCanvas.width!==w||screenCanvas.height!==h){screenCanvas.width=w;screenCanvas.height=h;}
+      sCtx.drawImage(screenVideo,0,0,w,h);
+      const frame=screenCanvas.toDataURL('image/jpeg',JPEG_Q);
+      if(frame.length>3000){wsSend({type:"frame-screen",data:frame});frameCount++;}
+    }
+  }catch(e){}
+  const delay=Math.max(5,FRAME_INTERVAL-(performance.now()-t0));
+  screenTimer=setTimeout(captureScreenFrame,delay);
+}
+
+function scheduleCameraFrame(){ if(cameraLoopRunning) return; cameraLoopRunning=true; captureCameraFrame(); }
+function captureCameraFrame(){
+  if(!sendingCamera){cameraLoopRunning=false;return;}
+  const t0=performance.now();
+
+  // Backpressure check
+  if(ws && ws.bufferedAmount > 128 * 1024){
+    cameraTimer=setTimeout(captureCameraFrame, FRAME_INTERVAL);
+    return;
+  }
+
+  try{
+    if(cameraVideo.readyState>=2&&cameraVideo.videoWidth>0){
+      let w=cameraVideo.videoWidth,h=cameraVideo.videoHeight;
+      if(w>MAX_W||h>MAX_H){const r=Math.min(MAX_W/w,MAX_H/h);w=Math.round(w*r);h=Math.round(h*r);}
+      if(cameraCanvas.width!==w||cameraCanvas.height!==h){cameraCanvas.width=w;cameraCanvas.height=h;}
+      cCtx.drawImage(cameraVideo,0,0,w,h);
+      const frame=cameraCanvas.toDataURL('image/jpeg',JPEG_Q);
+      if(frame.length>3000){wsSend({type:"frame-camera",data:frame});frameCount++;}
+    }
+  }catch(e){}
+  const delay=Math.max(5,FRAME_INTERVAL-(performance.now()-t0));
+  cameraTimer=setTimeout(captureCameraFrame,delay);
+}
+
+// ── Stop functions ────────────────────────────────────────────
+function stopScreen(){
+  sendingScreen=false; screenLoopRunning=false;
+  if(screenTimer) clearTimeout(screenTimer);
+  if(screenStream){screenStream.getTracks().forEach(t=>t.stop());screenStream=null;}
+  wsSend({type:"stop-screen"}); updateUI();
+}
+function stopCamera(){
+  sendingCamera=false; cameraLoopRunning=false;
+  if(cameraTimer) clearTimeout(cameraTimer);
+  if(cameraStream){cameraStream.getTracks().forEach(t=>t.stop());cameraStream=null;}
+  if(!sendingScreen && motionCheckInterval){clearInterval(motionCheckInterval);motionCheckInterval=null;}
+  if(!sendingScreen) setPill('pillMotion','🎯 MOTION: OFF',false);
+  wsSend({type:"stop-camera"}); updateUI();
+}
+function stopAll(){
+  stopScreen(); stopCamera();
+  if(fpsInterval){clearInterval(fpsInterval);fpsInterval=null;}
+  if(motionCheckInterval){clearInterval(motionCheckInterval);motionCheckInterval=null;}
+  updateUI();
+}
+
+// ── FPS counter ───────────────────────────────────────────────
+function startFpsCounter(){
+  if(fpsInterval) return;
+  fpsInterval=setInterval(()=>{document.getElementById('fpsCount').textContent=frameCount;frameCount=0;},1000);
+}
+
+// ── Remote command handler ────────────────────────────────────
+function handleCommand(cmd, payload){
+  switch(cmd){
+    case 'take-snapshot':
+      // Force high-resolution instant frame
+      if(cameraVideo.readyState>=2&&cameraVideo.videoWidth>0){
+        const w=cameraVideo.videoWidth,h=cameraVideo.videoHeight;
+        if(cameraCanvas.width!==w||cameraCanvas.height!==h){cameraCanvas.width=w;cameraCanvas.height=h;}
+        cCtx.drawImage(cameraVideo,0,0,w,h);
+        const snap = cameraCanvas.toDataURL('image/jpeg',SNAP_Q);
+        wsSend({type:"save-snapshot",feedType:"camera",data:snap});
+        wsSend({type:"frame-camera",data:snap});
+      }
+      if(screenVideo.readyState>=2&&screenVideo.videoWidth>0){
+        const w=screenVideo.videoWidth,h=screenVideo.videoHeight;
+        if(screenCanvas.width!==w||screenCanvas.height!==h){screenCanvas.width=w;screenCanvas.height=h;}
+        sCtx.drawImage(screenVideo,0,0,w,h);
+        const snap = screenCanvas.toDataURL('image/jpeg',SNAP_Q);
+        wsSend({type:"save-snapshot",feedType:"screen",data:snap});
+        wsSend({type:"frame-screen",data:snap});
+      }
+      break;
+    case 'flip-camera':
+      const newFacing = cameraFacing==='environment'?'user':'environment';
+      cameraFacing=newFacing;
+      stopCamera();
+      setTimeout(()=>startCameraStream(newFacing),300);
+      break;
+    case 'set-fps':
+      if(payload.fps) FRAME_INTERVAL = Math.max(16, Math.round(1000 / payload.fps));
+      break;
+    case 'set-sensitivity':
+      if(payload.level==='ultra'){
+        MOTION_THRESHOLD = 5;
+        MOTION_RATIO = 0.001;
+        MOTION_CHECK_INTERVAL = 100;
+      } else if(payload.level==='high'){
+        MOTION_THRESHOLD = 10;
+        MOTION_RATIO = 0.003;
+        MOTION_CHECK_INTERVAL = 200;
+      } else {
+        MOTION_THRESHOLD = 18;
+        MOTION_RATIO = 0.008;
+        MOTION_CHECK_INTERVAL = 300;
+      }
+      startMotionWatcher();
+      notice('⚡ Motion sensitivity updated: ' + (payload.level||'ultra').toUpperCase());
+      setTimeout(()=>notice(''), 2500);
+      break;
+    case 'get-location':
+      if(navigator.geolocation){
+        navigator.geolocation.getCurrentPosition(pos=>{
+          wsSend({type:"location",coords:{lat:pos.coords.latitude,lng:pos.coords.longitude,acc:Math.round(pos.coords.accuracy)}});
+          lastLocationSent=Date.now();
+        });
+      }
+      break;
+    case 'restart-streams':
+      stopAll();
+      setTimeout(userStartAll, 500);
+      break;
+  }
+}
+
+// ── Page visibility & Online listeners ────────────────────────
+document.addEventListener('visibilitychange',()=>{
+  if(!document.hidden){
+    if(!ws || ws.readyState !== 1) connectWS();
+    if(sendingCamera && cameraStream===null) startCameraStream();
+    if(sendingScreen && screenStream===null) startScreenStream();
+  }
+});
+
+window.addEventListener('online', ()=>{
+  if(!ws || ws.readyState !== 1) connectWS();
+});
+
+connectWS();
+updateUI();
+</script>
+</body>
+</html>

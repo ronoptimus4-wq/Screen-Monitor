@@ -1,0 +1,13 @@
+{
+  "name": "screen-monitor",
+  "version": "1.0.0",
+  "description": "Parental screen monitoring via WebRTC",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "npx nodemon server.js"
+  },
+  "dependencies": {
+    "ws": "^8.17.1"
+  }
+}
